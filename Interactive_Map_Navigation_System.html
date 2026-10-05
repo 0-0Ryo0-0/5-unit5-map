@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Map Navigation System with PDF Background</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PDF.js library for rendering PDF files inside Canvas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            user-select: none;
+        }
+        .compass-dial {
+            transition: transform 0.3s ease;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.05);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 h-screen w-screen overflow-hidden flex flex-col md:flex-row">
+
+    <!-- Left / Top Control Panel -->
+    <aside class="w-full md:w-80 bg-slate-800/90 backdrop-blur border-b md:border-b-0 md:border-r border-slate-700 p-4 flex flex-col justify-between z-10 shadow-2xl flex-shrink-0 max-h-screen overflow-y-auto">
+        <div class="space-y-5">
+            <!-- Header -->
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="p-2.5 bg-amber-600/20 text-amber-500 rounded-xl border border-amber-500/30">
+                        <i class="fa-solid fa-map-location-dot text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg tracking-wide text-slate-100">PDFマップナビ</h1>
+                        <p class="text-xs text-slate-400">PDF Map Navigation System</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PDF File Source Selector -->
+            <div class="bg-slate-900/80 rounded-xl p-3 border border-slate-700/60 space-y-2">
+                <div class="flex items-center justify-between text-xs font-semibold text-slate-300">
+                    <span><i class="fa-solid fa-file-pdf text-amber-500 mr-1.5"></i>マップ背景PDF</span>
+                    <span id="pdf-status-tag" class="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/30">ロード中...</span>
+                </div>
+                
+                <!-- PDF Upload / Switcher -->
+                <div class="flex items-center space-x-2 pt-1">
+                    <label for="pdf-file-input" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2 px-3 rounded-lg border border-slate-600 cursor-pointer flex items-center justify-center space-x-2 transition">
+                        <i class="fa-solid fa-upload text-amber-400"></i>
+                        <span>PDFを選択 / 変更</span>
+                    </label>
+                    <input type="file" id="pdf-file-input" accept="application/pdf" class="hidden">
+                </div>
+                <p id="pdf-name-display" class="text-[11px] text-slate-400 truncate pt-0.5">日本の祝日なし_茶.pdf</p>
+            </div>
+
+            <!-- Position Info Card -->
+            <div class="bg-slate-900/80 rounded-xl p-3 border border-slate-700/60 shadow-inner">
+                <div class="text-xs font-semibold uppercase text-slate-400 mb-2 flex items-center justify-between">
+                    <span><i class="fa-solid fa-crosshairs mr-1.5 text-amber-500"></i>現在地座標</span>
+                    <span id="heading-display" class="text-amber-400 font-mono">北 (0°)</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-center">
+                    <div class="bg-slate-800/80 p-2 rounded-lg border border-slate-700">
+                        <div class="text-[11px] text-slate-400 mb-0.5">X 座標</div>
+                        <div id="pos-x" class="text-base font-mono font-bold text-amber-400">0.0</div>
+                    </div>
+                    <div class="bg-slate-800/80 p-2 rounded-lg border border-slate-700">
+                        <div class="text-[11px] text-slate-400 mb-0.5">Y 座標</div>
+                        <div id="pos-y" class="text-base font-mono font-bold text-amber-400">0.0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Control D-Pad -->
+            <div class="space-y-2">
+                <label class="text-xs font-semibold uppercase text-slate-400 flex items-center justify-between">
+                    <span><i class="fa-solid fa-compass mr-1.5 text-amber-500"></i>移動操作（ボタン/キーボード）</span>
+                    <span class="text-[10px] text-slate-500">W A S D / 矢印</span>
+                </label>
+                
+                <div class="flex justify-center items-center py-1">
+                    <div class="grid grid-cols-3 gap-2 w-44 h-44 bg-slate-900/60 p-2.5 rounded-2xl border border-slate-700 shadow-lg relative">
+                        <!-- Empty Top-Left -->
+                        <div></div>
+                        <!-- Up / Forward -->
+                        <button id="btn-up" title="前へ (W / Up)" class="nav-btn bg-slate-700 hover:bg-amber-600 active:bg-amber-700 text-slate-100 rounded-xl flex flex-col items-center justify-center transition-all shadow hover:shadow-amber-500/20 group">
+                            <i class="fa-solid fa-chevron-up text-lg group-hover:-translate-y-0.5 transition-transform"></i>
+                            <span class="text-[9px] font-bold mt-0.5">前進</span>
+                        </button>
+                        <!-- Empty Top-Right -->
+                        <div></div>
+
+                        <!-- Left -->
+                        <button id="btn-left" title="左へ (A / Left)" class="nav-btn bg-slate-700 hover:bg-amber-600 active:bg-amber-700 text-slate-100 rounded-xl flex flex-col items-center justify-center transition-all shadow hover:shadow-amber-500/20 group">
+                            <i class="fa-solid fa-chevron-left text-lg group-hover:-translate-x-0.5 transition-transform"></i>
+                            <span class="text-[9px] font-bold mt-0.5">左</span>
+                        </button>
+
+                        <!-- Center / Reset -->
+                        <button id="btn-reset" title="初期位置に戻る" class="bg-slate-800 hover:bg-slate-600 text-amber-400 rounded-xl flex flex-col items-center justify-center transition-all border border-slate-600 hover:border-amber-500">
+                            <i class="fa-solid fa-arrows-to-dot text-base"></i>
+                            <span class="text-[8px] mt-0.5 text-slate-300">リセット</span>
+                        </button>
+
+                        <!-- Right -->
+                        <button id="btn-right" title="右へ (D / Right)" class="nav-btn bg-slate-700 hover:bg-amber-600 active:bg-amber-700 text-slate-100 rounded-xl flex flex-col items-center justify-center transition-all shadow hover:shadow-amber-500/20 group">
+                            <i class="fa-solid fa-chevron-right text-lg group-hover:translate-x-0.5 transition-transform"></i>
+                            <span class="text-[9px] font-bold mt-0.5">右</span>
+                        </button>
+
+                        <!-- Empty Bottom-Left -->
+                        <div></div>
+                        <!-- Down / Backward -->
+                        <button id="btn-down" title="後ろへ (S / Down)" class="nav-btn bg-slate-700 hover:bg-amber-600 active:bg-amber-700 text-slate-100 rounded-xl flex flex-col items-center justify-center transition-all shadow hover:shadow-amber-500/20 group">
+                            <i class="fa-solid fa-chevron-down text-lg group-hover:translate-y-0.5 transition-transform"></i>
+                            <span class="text-[9px] font-bold mt-0.5">後退</span>
+                        </button>
+                        <!-- Empty Bottom-Right -->
+                        <div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Speed & Zoom Settings -->
+            <div class="space-y-3 bg-slate-900/50 p-3 rounded-xl border border-slate-700/60">
+                <!-- Move Speed Slider -->
+                <div>
+                    <div class="flex justify-between items-center text-xs mb-1">
+                        <span class="text-slate-300 flex items-center"><i class="fa-solid fa-gauge-high mr-1.5 text-amber-500"></i>移動速度</span>
+                        <span id="speed-val" class="font-mono text-amber-400">12 px</span>
+                    </div>
+                    <input type="range" id="speed-slider" min="2" max="40" value="12" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                </div>
+
+                <!-- Zoom Controls -->
+                <div>
+                    <div class="flex justify-between items-center text-xs mb-1">
+                        <span class="text-slate-300 flex items-center"><i class="fa-solid fa-magnifying-glass mr-1.5 text-amber-500"></i>ズーム</span>
+                        <span id="zoom-val" class="font-mono text-amber-400">100%</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button id="btn-zoom-out" class="p-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg flex-1 transition"><i class="fa-solid fa-minus text-xs"></i></button>
+                        <button id="btn-zoom-reset" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-xs text-slate-200 rounded-lg transition">100%</button>
+                        <button id="btn-zoom-in" class="p-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg flex-1 transition"><i class="fa-solid fa-plus text-xs"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Instructions Footer -->
+        <div class="mt-4 pt-3 border-t border-slate-700/60 text-[11px] text-slate-400 space-y-1">
+            <p><i class="fa-regular fa-keyboard mr-1 text-amber-500"></i> <strong>ボタン/キー:</strong> 押すと前後左右へ移動</p>
+            <p><i class="fa-solid fa-computer-mouse mr-1 text-amber-500"></i> <strong>ドラッグ:</strong> マップ全体の視点移動</p>
+        </div>
+    </aside>
+
+    <!-- Main Map Display Area -->
+    <main class="flex-1 relative bg-slate-950 overflow-hidden flex items-center justify-center">
+        <!-- Canvas Viewer -->
+        <canvas id="mapCanvas" class="w-full h-full cursor-grab active:cursor-grabbing"></canvas>
+
+        <!-- Top Right Mini-HUD / Compass -->
+        <div class="absolute top-4 right-4 bg-slate-800/80 backdrop-blur p-3 rounded-2xl border border-slate-700/80 shadow-xl flex items-center space-x-3 pointer-events-none">
+            <div class="relative w-11 h-11 flex items-center justify-center">
+                <div id="compass-dial" class="compass-dial absolute inset-0 rounded-full border-2 border-slate-600 flex items-center justify-center">
+                    <span class="absolute top-0.5 text-[8px] font-bold text-amber-500">N</span>
+                    <span class="absolute bottom-0.5 text-[8px] font-bold text-slate-400">S</span>
+                    <span class="absolute left-0.5 text-[8px] font-bold text-slate-400">W</span>
+                    <span class="absolute right-0.5 text-[8px] font-bold text-slate-400">E</span>
+                </div>
+                <i class="fa-solid fa-location-arrow text-amber-500 text-base transform -rotate-45"></i>
+            </div>
+            <div class="text-right">
+                <div class="text-[10px] text-slate-400 font-medium">ナビゲーション</div>
+                <div class="text-xs font-bold text-emerald-400 flex items-center justify-end">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse mr-1.5"></span>アクティブ
+                </div>
+            </div>
+        </div>
+
+        <!-- Floating Mobile D-Pad Overlay -->
+        <div class="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-800/90 backdrop-blur px-4 py-2 rounded-full border border-slate-700 shadow-2xl flex items-center space-x-3 md:hidden z-10">
+            <button id="m-btn-left" class="p-3 text-slate-200 active:text-amber-400"><i class="fa-solid fa-chevron-left text-lg"></i></button>
+            <button id="m-btn-up" class="p-3 text-slate-200 active:text-amber-400"><i class="fa-solid fa-chevron-up text-lg"></i></button>
+            <button id="m-btn-down" class="p-3 text-slate-200 active:text-amber-400"><i class="fa-solid fa-chevron-down text-lg"></i></button>
+            <button id="m-btn-right" class="p-3 text-slate-200 active:text-amber-400"><i class="fa-solid fa-chevron-right text-lg"></i></button>
+        </div>
+    </main>
+
+    <script>
+        // Configure PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // State Management
+        const state = {
+            pos: { x: 0, y: 0 },         // Player map position
+            speed: 12,                   // Movement step speed
+            scale: 1.0,                  // Zoom multiplier
+            minScale: 0.3,
+            maxScale: 4.0,
+            rotation: 0,                 // Heading angle (degrees)
+            facing: 'UP',                // キャラクターの向き ('UP', 'DOWN', 'LEFT', 'RIGHT')
+            isDragging: false,
+            dragStart: { x: 0, y: 0 },
+            panOffset: { x: 0, y: 0 },   // Drag pan offset
+            keysPressed: {},
+            pdfCanvas: null,             // Offscreen canvas holding rendered PDF page
+            pdfLoaded: false,
+            pdfDimensions: { width: 1000, height: 1000 },
+            // 歩行アニメーション用の状態変数
+            walkFrame: 0,                // 歩行フレームカウント
+            isMoving: false,             // 移動中フラグ
+            markerSize: 2.2              // キャラクターの拡大スケール倍率
+        };
+
+        // DOM elements
+        const canvas = document.getElementById('mapCanvas');
+        const ctx = canvas.getContext('2d');
+        const posXEl = document.getElementById('pos-x');
+        const posYEl = document.getElementById('pos-y');
+        const speedSlider = document.getElementById('speed-slider');
+        const speedVal = document.getElementById('speed-val');
+        const zoomVal = document.getElementById('zoom-val');
+        const headingDisplay = document.getElementById('heading-display');
+        const compassDial = document.getElementById('compass-dial');
+        const pdfStatusTag = document.getElementById('pdf-status-tag');
+        const pdfNameDisplay = document.getElementById('pdf-name-display');
+
+        // Resize Canvas to fill screen
+        function initCanvasSize() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+            requestAnimationFrame(drawMap);
+        }
+        window.addEventListener('resize', initCanvasSize);
+
+        // Load PDF onto an offscreen canvas
+        async function loadPDFSource(source, filename = "日本の祝日なし_茶.pdf") {
+            try {
+                pdfStatusTag.textContent = "読み込み中...";
+                pdfStatusTag.className = "text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/30";
+                pdfNameDisplay.textContent = filename;
+
+                const loadingTask = typeof source === 'string' 
+                    ? pdfjsLib.getDocument(source) 
+                    : pdfjsLib.getDocument({ data: source });
+
+                const pdf = await loadingTask.promise;
+                const page = await pdf.getPage(1);
+
+                // Render at high resolution for crisp zoom
+                const viewport = page.getViewport({ scale: 2.0 });
+
+                // Create offscreen canvas for PDF background
+                const offCanvas = document.createElement('canvas');
+                offCanvas.width = viewport.width;
+                offCanvas.height = viewport.height;
+                const offCtx = offCanvas.getContext('2d');
+
+                await page.render({ canvasContext: offCtx, viewport: viewport }).promise;
+
+                state.pdfCanvas = offCanvas;
+                state.pdfDimensions = { width: viewport.width, height: viewport.height };
+                state.pdfLoaded = true;
+
+                pdfStatusTag.textContent = "マップ読み込み完了";
+                pdfStatusTag.className = "text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30";
+                
+                drawMap();
+            } catch (err) {
+                console.warn("Target PDF file not directly found via URL, falling back to styled parchment map generator.", err);
+                generateFallbackPDFCanvas(filename);
+            }
+        }
+
+        // Fallback generator if local PDF URL cannot be fetched directly without file picker
+        function generateFallbackPDFCanvas(name = "日本の祝日なし_茶.pdf") {
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = 1200;
+            offCanvas.height = 1200;
+            const offCtx = offCanvas.getContext('2d');
+
+            // Parchment PDF Style Background
+            offCtx.fillStyle = '#8c6d46';
+            offCtx.fillRect(0, 0, 1200, 1200);
+
+            // Aged paper texture
+            offCtx.fillStyle = '#d1b894';
+            offCtx.fillRect(20, 20, 1160, 1160);
+
+            // Decorative grid lines
+            offCtx.strokeStyle = 'rgba(120, 80, 40, 0.25)';
+            offCtx.lineWidth = 2;
+            for (let i = 60; i < 1140; i += 80) {
+                offCtx.beginPath();
+                offCtx.moveTo(i, 20);
+                offCtx.lineTo(i, 1180);
+                offCtx.stroke();
+
+                offCtx.beginPath();
+                offCtx.moveTo(20, i);
+                offCtx.lineTo(1180, i);
+                offCtx.stroke();
+            }
+
+            // PDF Map Title Overlay
+            offCtx.fillStyle = '#5c3a1e';
+            offCtx.font = 'bold 36px serif';
+            offCtx.textAlign = 'center';
+            offCtx.fillText(name, 600, 100);
+
+            offCtx.font = '20px serif';
+            offCtx.fillText("Town Map Navigation System", 600, 140);
+
+            // Simulated Town Landmarks
+            const points = [
+                { x: 600, y: 600, label: "中央広場", icon: "🏛️" },
+                { x: 300, y: 300, label: "西の街", icon: "🏘️" },
+                { x: 900, y: 300, label: "東の市場", icon: "🎪" },
+                { x: 300, y: 900, label: "南の港", icon: "⚓" },
+                { x: 900, y: 900, label: "古代遺跡", icon: "🗿" }
+            ];
+
+            points.forEach(p => {
+                offCtx.fillStyle = '#fef3c7';
+                offCtx.beginPath();
+                offCtx.arc(p.x, p.y, 35, 0, Math.PI * 2);
+                offCtx.fill();
+                offCtx.strokeStyle = '#78350f';
+                offCtx.lineWidth = 3;
+                offCtx.stroke();
+
+                offCtx.font = '28px sans-serif';
+                offCtx.fillText(p.icon, p.x, p.y + 8);
+
+                offCtx.font = 'bold 16px sans-serif';
+                offCtx.fillStyle = '#451a03';
+                offCtx.fillText(p.label, p.x, p.y + 60);
+            });
+
+            state.pdfCanvas = offCanvas;
+            state.pdfDimensions = { width: 1200, height: 1200 };
+            state.pdfLoaded = true;
+
+            pdfStatusTag.textContent = "カスタムPDF読み込み可";
+            pdfStatusTag.className = "text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/30";
+
+            drawMap();
+        }
+
+        // Allow user to upload any PDF from local disk
+        document.getElementById('pdf-file-input').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                const typedarray = new Uint8Array(evt.target.result);
+                loadPDFSource(typedarray, file.name);
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function move(dx, dy) {
+            state.pos.x += dx * state.speed;
+            state.pos.y += dy * state.speed;
+            state.isMoving = true;
+            state.walkFrame += 0.3;      // 移動時に歩行アニメーションを進める
+
+            // キャラクターの向きを設定（上下左右）
+            if (dy < 0) state.facing = 'UP';
+            else if (dy > 0) state.facing = 'DOWN';
+            else if (dx < 0) state.facing = 'LEFT';
+            else if (dx > 0) state.facing = 'RIGHT';
+
+            // Calculate compass orientation angle
+            if (dx !== 0 || dy !== 0) {
+                let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+                state.rotation = angle;
+                updateCompass(angle);
+            }
+
+            updateUI();
+            requestAnimationFrame(drawMap);
+        }
+
+        function updateCompass(angle) {
+            compassDial.style.transform = `rotate(${angle}deg)`;
+            let cardinal = "北";
+            if (angle > 45 && angle <= 135) cardinal = "東";
+            else if (angle > 135 && angle <= 225) cardinal = "南";
+            else if (angle > 225 && angle <= 315) cardinal = "西";
+            headingDisplay.textContent = `${cardinal} (${Math.round(angle)}°)`;
+        }
+
+        function updateUI() {
+            posXEl.textContent = state.pos.x.toFixed(1);
+            posYEl.textContent = (-state.pos.y).toFixed(1);
+            speedVal.textContent = `${state.speed} px`;
+            zoomVal.textContent = `${Math.round(state.scale * 100)}%`;
+        }
+
+        function drawMap() {
+            const width = canvas.width;
+            const height = canvas.height;
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.save();
+
+            // Center camera view on character position + user drag pan offset
+            const centerX = width / 2 + state.panOffset.x;
+            const centerY = height / 2 + state.panOffset.y;
+
+            ctx.translate(centerX, centerY);
+            ctx.scale(state.scale, state.scale);
+
+            // Draw PDF Background Map
+            if (state.pdfLoaded && state.pdfCanvas) {
+                const pdfW = state.pdfDimensions.width;
+                const pdfH = state.pdfDimensions.height;
+                // Render PDF centered relative to user movement position
+                ctx.drawImage(
+                    state.pdfCanvas, 
+                    -pdfW / 2 - state.pos.x, 
+                    -pdfH / 2 - state.pos.y, 
+                    pdfW, 
+                    pdfH
+                );
+
+                // Draw map boundary shadow
+                ctx.strokeStyle = '#f59e0b';
+                ctx.lineWidth = 4;
+                ctx.strokeRect(-pdfW / 2 - state.pos.x, -pdfH / 2 - state.pos.y, pdfW, pdfH);
+            }
+
+            // Overlay coordinate grid lines over PDF map
+            drawGridOverlay();
+
+            // Draw Player Marker at Center Point
+            drawPlayerMarker();
+
+            ctx.restore();
+        }
+
+        function drawGridOverlay() {
+            const step = 200;
+            const range = 2000;
+
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.lineWidth = 1;
+
+            for (let x = -range; x <= range; x += step) {
+                ctx.beginPath();
+                ctx.moveTo(x - state.pos.x, -range - state.pos.y);
+                ctx.lineTo(x - state.pos.x, range - state.pos.y);
+                ctx.stroke();
+            }
+
+            for (let y = -range; y <= range; y += step) {
+                ctx.beginPath();
+                ctx.moveTo(-range - state.pos.x, y - state.pos.y);
+                ctx.lineTo(range - state.pos.x, y - state.pos.y);
+                ctx.stroke();
+            }
+        }
+
+        function drawPlayerMarker() {
+            const x = 0;
+            const y = 0;
+
+            ctx.save();
+            ctx.translate(x, y);
+
+            // 1. 地面の波紋＆ターゲットエリア（大型リング）
+            const pulseSize = 38 + Math.sin(Date.now() * 0.005) * 4;
+            ctx.strokeStyle = 'rgba(245, 158, 11, 0.4)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(0, 0, pulseSize, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // 2. 足元の影
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+            ctx.beginPath();
+            ctx.ellipse(0, 8, 22, 12, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 3. 視界ライトコーン (進行方向へ照射)
+            ctx.save();
+            ctx.rotate((state.rotation - 90) * Math.PI / 180);
+            const lightGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, 80);
+            lightGrad.addColorStop(0, 'rgba(245, 158, 11, 0.4)');
+            lightGrad.addColorStop(1, 'rgba(245, 158, 11, 0.0)');
+            ctx.fillStyle = lightGrad;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.arc(0, 0, 80, -Math.PI / 5, Math.PI / 5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            // 4. 大型歩行キャラクターを描画 (頭部は常に画面上部=北を向き、逆さまにならない)
+            const s = state.markerSize;
+            ctx.scale(s, s);
+
+            // 歩行運動の計算
+            const walkCycle = state.isMoving ? Math.sin(state.walkFrame) : 0;
+            const legSwing = walkCycle * 8;
+
+            const dir = state.facing; // 'UP', 'DOWN', 'LEFT', 'RIGHT'
+
+            // --- 足の描画 ---
+            ctx.fillStyle = '#1e293b'; // ズボン
+            if (dir === 'LEFT' || dir === 'RIGHT') {
+                const lOff = dir === 'LEFT' ? -legSwing : legSwing;
+                ctx.fillRect(-4 + lOff, 2, 4, 10);
+                ctx.fillRect(-1 - lOff, 2, 4, 10);
+
+                ctx.fillStyle = '#ea580c'; // 靴
+                ctx.fillRect(-6 + lOff, 10, 6, 4);
+                ctx.fillRect(-3 - lOff, 10, 6, 4);
+            } else {
+                ctx.fillRect(-5, 0 + legSwing, 4, 10);
+                ctx.fillRect(1, 0 - legSwing, 4, 10);
+
+                ctx.fillStyle = '#ea580c'; // 靴
+                ctx.fillRect(-6, 8 + legSwing, 5, 4);
+                ctx.fillRect(1, 8 - legSwing, 5, 4);
+            }
+
+            // --- バックパック ---
+            ctx.fillStyle = '#78350f';
+            if (dir === 'UP') {
+                ctx.fillRect(-6, -8, 12, 6);
+            } else if (dir === 'DOWN') {
+                ctx.fillRect(-7, -6, 14, 4);
+            } else if (dir === 'LEFT') {
+                ctx.fillRect(2, -8, 6, 10);
+            } else if (dir === 'RIGHT') {
+                ctx.fillRect(-8, -8, 6, 10);
+            }
+
+            // --- 胴体 / 服 ---
+            ctx.fillStyle = '#f59e0b';
+            ctx.beginPath();
+            ctx.roundRect(-6, -10, 12, 12, 3);
+            ctx.fill();
+
+            // --- 腕 ---
+            ctx.fillStyle = '#d97706';
+            if (dir === 'LEFT' || dir === 'RIGHT') {
+                ctx.fillRect(-2, -6, 4, 8);
+            } else {
+                ctx.fillRect(-9, -8 + legSwing, 3, 9);
+                ctx.fillRect(6, -8 - legSwing, 3, 9);
+            }
+
+            // --- 頭部 (常に頭が上に向く構造) ---
+            ctx.fillStyle = '#fde047'; // 肌 / 髪
+            ctx.beginPath();
+            ctx.arc(0, -14, 7, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 赤い帽子
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath();
+            ctx.arc(0, -15, 7.5, Math.PI, Math.PI * 2);
+            ctx.fill();
+
+            // 帽子のツバ (移動方向に応じた向きへ突出)
+            ctx.fillStyle = '#dc2626';
+            ctx.beginPath();
+            if (dir === 'UP') {
+                ctx.roundRect(-4, -22, 8, 3, 1);
+            } else if (dir === 'DOWN') {
+                ctx.roundRect(-4, -10, 8, 3, 1);
+            } else if (dir === 'LEFT') {
+                ctx.roundRect(-9, -16, 6, 3, 1);
+            } else if (dir === 'RIGHT') {
+                ctx.roundRect(3, -16, 6, 3, 1);
+            }
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // Continuous Key Press Loop
+        function handleContinuousMovement() {
+            let dx = 0;
+            let dy = 0;
+
+            if (state.keysPressed['ArrowUp'] || state.keysPressed['KeyW']) dy -= 1;
+            if (state.keysPressed['ArrowDown'] || state.keysPressed['KeyS']) dy += 1;
+            if (state.keysPressed['ArrowLeft'] || state.keysPressed['KeyA']) dx -= 1;
+            if (state.keysPressed['ArrowRight'] || state.keysPressed['KeyD']) dx += 1;
+
+            if (dx !== 0 || dy !== 0) {
+                if (dx !== 0 && dy !== 0) {
+                    dx *= 0.7071;
+                    dy *= 0.7071;
+                }
+                move(dx, dy);
+            } else {
+                state.isMoving = false;
+                // 移動停止時は呼吸のような微細アニメーション
+                state.walkFrame *= 0.8;
+                requestAnimationFrame(drawMap);
+            }
+
+            requestAnimationFrame(handleContinuousMovement);
+        }
+
+        // Key Listeners
+        window.addEventListener('keydown', (e) => {
+            state.keysPressed[e.code] = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            state.keysPressed[e.code] = false;
+        });
+
+        const bindNavButton = (elementId, dx, dy) => {
+            const btn = document.getElementById(elementId);
+            if (!btn) return;
+
+            let interval;
+            const startMove = (e) => {
+                e.preventDefault();
+                move(dx, dy);
+                interval = setInterval(() => move(dx, dy), 50);
+            };
+            const stopMove = () => clearInterval(interval);
+
+            btn.addEventListener('mousedown', startMove);
+            btn.addEventListener('mouseup', stopMove);
+            btn.addEventListener('mouseleave', stopMove);
+            btn.addEventListener('touchstart', startMove);
+            btn.addEventListener('touchend', stopMove);
+        };
+
+        // Desktop Navigation Buttons
+        bindNavButton('btn-up', 0, -1);
+        bindNavButton('btn-down', 0, 1);
+        bindNavButton('btn-left', -1, 0);
+        bindNavButton('btn-right', 1, 0);
+
+        // Mobile Floating Controls
+        bindNavButton('m-btn-up', 0, -1);
+        bindNavButton('m-btn-down', 0, 1);
+        bindNavButton('m-btn-left', -1, 0);
+        bindNavButton('m-btn-right', 1, 0);
+
+        // Reset Button
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            state.pos = { x: 0, y: 0 };
+            state.panOffset = { x: 0, y: 0 };
+            state.scale = 1.0;
+            updateUI();
+            drawMap();
+        });
+
+        // Speed Slider
+        speedSlider.addEventListener('input', (e) => {
+            state.speed = parseInt(e.target.value);
+            updateUI();
+        });
+
+        // Zoom Controls
+        document.getElementById('btn-zoom-in').addEventListener('click', () => {
+            state.scale = Math.min(state.maxScale, state.scale + 0.2);
+            updateUI();
+            drawMap();
+        });
+
+        document.getElementById('btn-zoom-out').addEventListener('click', () => {
+            state.scale = Math.max(state.minScale, state.scale - 0.2);
+            updateUI();
+            drawMap();
+        });
+
+        document.getElementById('btn-zoom-reset').addEventListener('click', () => {
+            state.scale = 1.0;
+            updateUI();
+            drawMap();
+        });
+
+        // Mouse Wheel Zooming
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            state.scale = Math.min(state.maxScale, Math.max(state.minScale, state.scale + delta));
+            updateUI();
+            drawMap();
+        }, { passive: false });
+
+        // Mouse Drag / Panning
+        canvas.addEventListener('mousedown', (e) => {
+            state.isDragging = true;
+            state.dragStart = { x: e.clientX - state.panOffset.x, y: e.clientY - state.panOffset.y };
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!state.isDragging) return;
+            state.panOffset.x = e.clientX - state.dragStart.x;
+            state.panOffset.y = e.clientY - state.dragStart.y;
+            drawMap();
+        });
+
+        window.addEventListener('mouseup', () => {
+            state.isDragging = false;
+        });
+
+        window.onload = () => {
+            initCanvasSize();
+            updateUI();
+            handleContinuousMovement();
+
+            // Attempt to load the user's PDF map file "日本の祝日なし_茶.pdf"
+            loadPDFSource("日本の祝日なし_茶.pdf", "日本の祝日なし_茶.pdf");
+        };
+    </script>
+</body>
+</html>
